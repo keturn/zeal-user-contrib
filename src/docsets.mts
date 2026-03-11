@@ -1,9 +1,10 @@
 import fs from 'fs-extra';
-import { got } from 'got';
-import tar from 'tar';
-import { temporaryFile } from 'tempy';
-import { logger } from './logger.mjs';
-import { Metadata } from './metadata.mjs';
+import ky from 'ky';
+import * as tar from 'tar';
+import { logger } from "./logger.mts";
+import { Metadata } from "./metadata.mts";
+import { sample } from "@es-toolkit/es-toolkit";
+import { ProgressByteStream } from "./streams.ts";
 
 export interface DocsetAuthor {
   name: string;
@@ -39,12 +40,15 @@ export interface Docset {
 /* eslint-enable @typescript-eslint/naming-convention */
 
 export async function getAvailableDocsets(mirror?: string): Promise<Docset[]> {
-  mirror = mirror !== undefined ? mirror + '.' : '';
+  let url: string;
+  if (mirror === "FAKE") {
+    url = 'file:///tmp/zzz-contribs.json';  // cspell:disable-line
+  } else {
+    mirror = mirror !== undefined ? mirror + '.' : '';
 
-  const url = `https://${mirror}kapeli.com/feeds/zzz/user_contributed/build/index.json`;
-  const response = await got.get(url, { responseType: 'json' });
-
-  const body = response.body as any;
+    url = `https://${mirror}kapeli.com/feeds/zzz/user_contributed/build/index.json`;  
+  }
+  const body = await ky.get(url).json<{ docsets: Record<string, Docset> }>();
 
   return Object.keys(body.docsets).map(key => {
     return {
@@ -59,33 +63,31 @@ export async function downloadDocset(
   metadata: Metadata,
   showProgress: boolean = true,
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    // By default a random url is chosen, just like how Zeal would download a docset
-    // If a mirror is specified with --mirror, metadata.urls will only contain one url
-    const archiveUrl = metadata.urls[Math.floor(Math.random() * metadata.urls.length)];
+  const tempPath = await Deno.makeTempFile({ prefix: docset.name, suffix: '.tar.gz' });
+  // By default a random url is chosen, just like how Zeal would download a docset
+  // If a mirror is specified with --mirror, metadata.urls will only contain one url
+  let archiveUrl = sample(metadata.urls);
 
-    // eslint-disable-next-line import/namespace
-    const tempPath = temporaryFile({ name: `${docset.name}.tar.gz` });
-    const writeStream = fs
-      .createWriteStream(tempPath)
-      .on('finish', () => resolve(tempPath))
-      .on('error', err => reject(err));
+  if (/FAKE/.test(archiveUrl)) {
+    archiveUrl = 'file:///tmp/fake-attrs.tgz';  // cspell:disable-line
+  }
 
-    logger.info(`Downloading docset from ${archiveUrl}`);
-    if (showProgress) {
-      const bar = logger.progress();
-      got
-        .stream(archiveUrl)
-        .on('downloadProgress', progress => bar.update(progress.percent))
-        .on('error', err => reject(err))
-        .pipe(writeStream);
-    } else {
-      got
-        .stream(archiveUrl)
-        .on('error', err => reject(err))
-        .pipe(writeStream);
-    }
-  });
+  logger.info(`Downloading docset from ${archiveUrl}`);
+
+  const resp = await fetch(archiveUrl);
+  const body = resp.body;
+  let readable = body;
+
+  if (showProgress) {
+    const bar = logger.progress();
+
+    readable = readable.pipeThrough(ProgressByteStream.fromResponse(resp, ({percent}) => {
+      bar.update(percent);
+    }));
+  }
+
+  await Deno.writeFile(tempPath, readable);
+  return tempPath;
 }
 
 export async function extractDocset(tempPath: string, docsetDirectory: string): Promise<void> {

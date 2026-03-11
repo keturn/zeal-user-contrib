@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'fs-extra';
-import { Docset } from './docsets.mjs';
-import { logger } from './logger.mjs';
+import { Docset } from './docsets.mts';
+import { logger } from './logger.mts';
 
 export interface Metadata {
   // A link to the xml feed, zeal-user-contrib sets this to a zealusercontributions.now.sh feed
@@ -22,7 +22,7 @@ export interface Metadata {
 }
 
 // A mirror is a subdomain of kapeli.com where docsets can be downloaded from
-export const availableMirrors = ['sanfrancisco', 'newyork', 'london', 'frankfurt'];
+export const availableMirrors = ['FAKE', 'sanfrancisco', 'newyork', 'london', 'frankfurt']; // cspell:disable-line
 
 export function getMetadata(docset: Docset, mirror?: string): Metadata {
   const mirrors = mirror !== undefined ? [mirror] : availableMirrors;
