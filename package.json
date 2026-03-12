@@ -42,7 +42,7 @@
     "inquirer-autocomplete-prompt": "^3.0.1",
     "progress": "^2.0.3",
     "table": "^6.9.0",
-    "tar": "^6.2.1",
+    "tar": "^7.5.11",
     "tempy": "^3.2.0",
     "tslib": "^2.8.1",
     "winreg": "^1.2.5"
