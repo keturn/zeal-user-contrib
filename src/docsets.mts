@@ -1,6 +1,6 @@
 import fs from 'fs-extra';
 import { got } from 'got';
-import tar from 'tar';
+import { extract } from 'tar';
 import { temporaryFile } from 'tempy';
 import { logger } from './logger.mjs';
 import { Metadata } from './metadata.mjs';
@@ -91,7 +91,7 @@ export async function extractDocset(tempPath: string, docsetDirectory: string): 
   logger.info(`Extracting docset to ${docsetDirectory}`);
 
   fs.ensureDirSync(docsetDirectory);
-  await tar.extract({
+  await extract({
     file: tempPath,
     cwd: docsetDirectory,
     strip: 1,
