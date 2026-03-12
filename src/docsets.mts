@@ -64,7 +64,6 @@ export async function downloadDocset(
     // If a mirror is specified with --mirror, metadata.urls will only contain one url
     const archiveUrl = metadata.urls[Math.floor(Math.random() * metadata.urls.length)];
 
-    // eslint-disable-next-line import/namespace
     const tempPath = temporaryFile({ name: `${docset.name}.tar.gz` });
     const writeStream = fs
       .createWriteStream(tempPath)
