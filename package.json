@@ -55,7 +55,6 @@
     "@types/inquirer-autocomplete-prompt": "^3.0.3",
     "@types/node": "^20.19.37",
     "@types/progress": "^2.0.7",
-    "@types/tar": "^6.1.13",
     "@types/winreg": "^1.2.36",
     "eslint": "^10.0.3",
     "eslint-config-prettier": "^10.1.8",
