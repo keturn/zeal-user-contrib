@@ -26,10 +26,10 @@
     "start": "pnpm build && ./bin/run",
     "lint": "pnpm run \"/^lint:.*/\"",
     "lint:eslint": "eslint --format codeframe 'src/**'",
-    "lint:prettier": "prettier --check --ignore-path .gitignore '**/*.{yml,json}'",
+    "lint:prettier": "prettier --check '**/*.{yml,json}'",
     "fix": "pnpm run --sequential \"/^fix:.*/\"",
     "fix:eslint": "pnpm lint:eslint --fix",
-    "fix:prettier": "prettier --write --ignore-path .gitignore '**/*.{yml,json}'",
+    "fix:prettier": "prettier --write '**/*.{yml,json}'",
     "prepack": "pnpm build"
   },
   "dependencies": {
