@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { stdout } from 'process';
 import ProgressBar from 'progress';
 
 class Logger {
@@ -30,7 +31,7 @@ class Logger {
     return new ProgressBar(`${prefix} [:bar] :percent`, {
       complete: '=',
       incomplete: ' ',
-      width: 50,
+      width: (stdout?.columns ?? 65) - 15,
       total,
     });
   }

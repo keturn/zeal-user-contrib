@@ -1,9 +1,12 @@
 import fs from 'fs-extra';
-import { got } from 'got';
+import ky from 'ky';
 import { extract } from 'tar';
 import { temporaryFile } from 'tempy';
 import { logger } from './logger.mjs';
 import { Metadata } from './metadata.mjs';
+import { sample } from 'es-toolkit/array';
+import { ByteStreamProgress } from './streams.mjs';
+import { Writable } from 'stream';
 
 export interface DocsetAuthor {
   name: string;
@@ -42,9 +45,7 @@ export async function getAvailableDocsets(mirror?: string): Promise<Docset[]> {
   mirror = mirror !== undefined ? mirror + '.' : '';
 
   const url = `https://${mirror}kapeli.com/feeds/zzz/user_contributed/build/index.json`;
-  const response = await got.get(url, { responseType: 'json' });
-
-  const body = response.body as any;
+  const body = await ky.get(url).json<{ docsets: Record<string, Docset> }>();
 
   return Object.keys(body.docsets).map(key => {
     return {
@@ -59,32 +60,30 @@ export async function downloadDocset(
   metadata: Metadata,
   showProgress: boolean = true,
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    // By default a random url is chosen, just like how Zeal would download a docset
-    // If a mirror is specified with --mirror, metadata.urls will only contain one url
-    const archiveUrl = metadata.urls[Math.floor(Math.random() * metadata.urls.length)];
+  // By default a random url is chosen, just like how Zeal would download a docset
+  // If a mirror is specified with --mirror, metadata.urls will only contain one url
+  const archiveUrl = sample(metadata.urls);
 
-    const tempPath = temporaryFile({ name: `${docset.name}.tar.gz` });
-    const writeStream = fs
-      .createWriteStream(tempPath)
-      .on('finish', () => resolve(tempPath))
-      .on('error', err => reject(err));
+  const tempPath = temporaryFile({ name: `${docset.name}.tar.gz` });
 
-    logger.info(`Downloading docset from ${archiveUrl}`);
-    if (showProgress) {
-      const bar = logger.progress();
-      got
-        .stream(archiveUrl)
-        .on('downloadProgress', progress => bar.update(progress.percent))
-        .on('error', err => reject(err))
-        .pipe(writeStream);
-    } else {
-      got
-        .stream(archiveUrl)
-        .on('error', err => reject(err))
-        .pipe(writeStream);
-    }
-  });
+  logger.info(`Downloading docset from ${archiveUrl}`);
+
+  const resp = await fetch(archiveUrl);
+  const body = resp.body;
+  let readable = body;
+
+  if (showProgress) {
+    const bar = logger.progress();
+
+    readable = readable.pipeThrough(
+      ByteStreamProgress.transformStreamFromResponse(resp, ({ percent }: { percent: number }) => {
+        bar.update(percent);
+      }),
+    );
+  }
+
+  await readable.pipeTo(Writable.toWeb(fs.createWriteStream(tempPath)));
+  return tempPath;
 }
 
 export async function extractDocset(tempPath: string, docsetDirectory: string): Promise<void> {
