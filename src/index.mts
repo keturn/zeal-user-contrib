@@ -10,6 +10,7 @@ import { saveIcons } from './icons.mjs';
 import { logger } from './logger.mjs';
 import { availableMirrors, getMetadata, saveMetadata } from './metadata.mjs';
 import { getDocsetsDirectory } from './zeal.mjs';
+import { zip } from 'es-toolkit/array';
 
 inquirer.registerPrompt('autocomplete', AutocompletePrompt);
 
@@ -110,9 +111,19 @@ async function runWithOptions(options: any): Promise<void> {
     logger.success(`Successfully added the ${docset.name} docset to Zeal`);
   });
 
-  await Promise.allSettled(tasks);
+  const results = zip(docsetsToInstall, await Promise.allSettled(tasks));
 
-  logger.info('If Zeal is running, make sure to restart it for the docset to show up');
+  const taskErrors: [Docset, unknown][] = results.flatMap(([docset, result]) =>
+    result.status !== 'rejected' ? [] : [[docset, result.reason]],
+  );
+
+  for (const [docset, error] of taskErrors) {
+    logger.error(`Failed to install docset ${docset.id}: ${error}`);
+  }
+
+  if (taskErrors.length < docsetsToInstall.length) {
+    logger.info('If Zeal is running, make sure to restart it for the docset to show up');
+  }
 }
 
 export async function run(): Promise<void> {
