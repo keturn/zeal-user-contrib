@@ -1,17 +1,16 @@
 import path from 'node:path';
+import { stdout } from 'node:process';
 import url from 'node:url';
 import { Command, Option } from 'commander';
+import search, { Separator } from '@inquirer/search';
 import fs from 'fs-extra';
-import inquirer from 'inquirer';
-import AutocompletePrompt from 'inquirer-autocomplete-prompt';
 import { table, getBorderCharacters } from 'table';
 import { Docset, downloadDocset, extractDocset, getAvailableDocsets } from './docsets.mjs';
 import { saveIcons } from './icons.mjs';
 import { logger } from './logger.mjs';
 import { availableMirrors, getMetadata, saveMetadata } from './metadata.mjs';
 import { getDocsetsDirectory } from './zeal.mjs';
-
-inquirer.registerPrompt('autocomplete', AutocompletePrompt);
+import { escapeRegExp } from 'es-toolkit/string';
 
 function getVersion(): string {
   const currentDirectory = path.dirname(url.fileURLToPath(import.meta.url));
@@ -20,31 +19,51 @@ function getVersion(): string {
   return packageJson.version;
 }
 
+// inquirer's function signatures are quirky enough to need a little type hinting, but it doesn't
+// export the Choice type.
+type SearchSourceFn<V> = Parameters<typeof search<V>>[0]['source'];
+type SearchResults<V> = Awaited<ReturnType<SearchSourceFn<V>>>;
+type Choice<Value> = Extract<SearchResults<Value>[number], { value: Value }>;
+
 async function selectDocset(mirror?: string): Promise<Docset> {
   const availableDocsets = await getAvailableDocsets(mirror);
-  const docsetNames = availableDocsets
-    .map(docset => docset.name)
-    .sort((a, b) => {
-      return a.toLowerCase().localeCompare(b.toLowerCase());
-    });
 
-  const { selectedName } = await inquirer.prompt([
-    {
-      type: 'autocomplete',
-      name: 'selectedName',
-      message: 'Select a docset to add to Zeal',
-      source: async (answersSoFar: string[], input: string) => {
-        if (input === undefined) {
-          return docsetNames;
-        }
+  const alphaCompare = Intl.Collator('en', { sensitivity: 'accent' }).compare;
+  const choices: Choice<Docset>[] = availableDocsets
+    .map(docset => ({
+      name: docset.name,
+      description: `${docset.name} ${docset.aliases?.length > 0 ? `[${docset.aliases.join(', ')}]` : ''}`,
+      value: docset,
+    }))
+    .sort((a, b) => alphaCompare(a.name, b.name));
 
-        input = input.toLowerCase();
-        return docsetNames.filter(name => name.toLowerCase().includes(input));
-      },
+  const selected = await search({
+    message: 'Select a docset to add to Zeal',
+    pageSize: Math.max(3, stdout.rows - 5),
+    source: (term: string | void) => {
+      if (!term) {
+        return choices;
+      }
+      const matcher = new RegExp(escapeRegExp(term), 'iu');
+      let matches = choices.map(choice => ({
+        nameMatch: matcher.test(choice.name) || matcher.test(choice.value.id),
+        aliasMatch: choice.value.aliases?.some(alias => matcher.test(alias)) ?? false,
+        name: choice.name,
+        choice: choice as Choice<Docset> | Separator,
+      }));
+      matches = matches.filter(({ nameMatch, aliasMatch }) => nameMatch || aliasMatch);
+      // Docs that match the name get sorted above those that only match an alias.
+      matches.unshift({ nameMatch: false, aliasMatch: true, name: 'Aliases', choice: new Separator() });
+      // Sort is stable, so we don't have to re-alphabetize every time.
+      matches.sort((a, b) => (a.nameMatch ? 0 : 1) - (b.nameMatch ? 0 : 1));
+      if (matches.at(-1)?.choice instanceof Separator) {
+        matches.pop();
+      }
+      return matches.map(({ choice }) => choice);
     },
-  ]);
+  });
 
-  return availableDocsets.find(docset => docset.name === selectedName);
+  return selected;
 }
 
 async function listAllDocsets(mirror?: string): Promise<void> {
